@@ -1,5 +1,10 @@
 import secrets
 import time
+import os
+import random
+import socket
+import threading
+
 
 from flask import Flask, jsonify, request
 
@@ -42,6 +47,27 @@ def validate():
     return jsonify({"valid": valid})
 
 
+
+def send_heartbeats():
+    """Send a heartbeat to the monitor every second."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        while True:
+            sock.sendto(b"HEARTBEAT", ("127.0.0.1", 9999))
+            print("[HEARTBEAT] Sent", flush=True)
+            time.sleep(1)
+
+
+def inject_random_crash():
+    """Simulate an unpredictable service failure."""
+    time.sleep(random.uniform(20, 40))
+    print("[FAULT] Simulated service crash", flush=True)
+    os._exit(1)
+
+
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8080, debug=False)
+    threading.Thread(target=send_heartbeats, daemon=True).start()
+    threading.Thread(target=inject_random_crash, daemon=True).start()
+
+    app.run(host="127.0.0.1", port=8080, debug=False, use_reloader=False)
 
