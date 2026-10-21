@@ -7,10 +7,26 @@ A lightweight authentication and ticket service demonstrating fault detection th
 The service validates simulated credentials, issues session tickets, and experiences random process crashes. A separate monitor detects failures by observing missed heartbeats. An adversarial script tests whether forged heartbeat messages can conceal a service outage.
 
 **Course:** CS 456, Modern Cybersecurity  
+
 **Assignment:** Mini Group Project 1, Part 1: Failure Detection
+
 **Team Members:** @ybenchouaf, @janerassadina, @nradaev, @mrob772
 
 ## Architecture
+
+```mermaid
+flowchart TB
+    Client["HTTP Client"]
+    Service["Authentication Service<br/>service.py"]
+    Monitor["Heartbeat Monitor<br/>monitor.py"]
+    Attacker["Adversarial Script<br/>attacker.py"]
+    Log["Incident Log"]
+
+    Client -->|"HTTP :8080<br/>Login / Validate"| Service
+    Service -->|"UDP :9999<br/>Heartbeat (1s)"| Monitor
+    Attacker -.->|"Forged Heartbeat"| Monitor
+    Monitor -->|"Failure Detection (3.5s)"| Log
+```
 
 Three independent Python programs:
 
