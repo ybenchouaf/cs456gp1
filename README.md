@@ -87,6 +87,48 @@ The attacker sends forged `HEARTBEAT` messages to the monitor, attempting to mai
 
 The audit evaluates whether false heartbeats successfully conceal downtime and documents the underlying vulnerability.
 
+### Reproducing the spoofing demonstration
+
+Use three terminals in the project folder after installing the dependencies:
+
+1. Run `python monitor.py` in the first terminal. It starts in `WAITING`.
+2. Run `python service.py` in the second terminal. The monitor reports `HEALTHY`.
+3. Wait for the service's random crash (20–40 seconds). Leave the service stopped.
+   About 3.5 seconds after its last heartbeat, the monitor reports `FAILED`.
+4. Run `python attacker.py` in the third terminal. Each second it sends the exact
+   bytes `HEARTBEAT` to UDP `127.0.0.1:9999` and prints a timestamped send message.
+   The monitor returns to `HEALTHY` even though the service is still stopped.
+5. Leave the attacker running and restart `python service.py` in the second
+   terminal. Wait for its next random crash. The monitor continues reporting
+   `HEALTHY` because forged heartbeats keep arriving.
+6. Stop the attacker with `Ctrl+C`, leaving the service stopped. The monitor
+   reports `FAILED` about 3.5 seconds after the final forged heartbeat.
+
+Show the exited service terminal alongside the monitor to distinguish actual
+service availability from its reported status. Use `Get-Content incidents.log`
+in PowerShell to show the recorded transitions. Stop the monitor with `Ctrl+C`
+when finished. Both scenarios fit within a three-minute video.
+
+### Observed outcome
+
+The local process integration check ran the actual service, monitor, and attacker
+as separate Python processes. After the first random service crash, the monitor
+reported `FAILED`. Starting the attacker restored `HEALTHY`, which persisted for
+at least five seconds with the service process exited. The service was restarted
+while the attacker kept running; after its second random crash, the monitor
+remained `HEALTHY` for at least another five seconds without logging a failure.
+Stopping the attacker caused the monitor to report `FAILED` again.
+
+The attack succeeds because the monitor accepts any datagram whose payload is
+exactly `HEARTBEAT`. It does not authenticate the sender or independently check
+the authentication API. The attacker's one-second interval keeps resetting the
+3.5-second timeout. These are forged application messages from another local
+process; the script does not spoof IP source addresses. A reported `HEALTHY`
+state therefore proves only that matching UDP messages are arriving, not that
+the authentication service is alive. Incident logging still records only state
+transitions, so an outage concealed throughout by the attacker has no failure
+entry.
+
 ## Installation and Execution
 
 Requires Python 3.11 or newer.
