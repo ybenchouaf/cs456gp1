@@ -134,13 +134,41 @@ entry.
 Requires Python 3.11 or newer.
 
 1. Create and activate a virtual environment.
+
+   macOS/Linux:
+```bash
+   python -m venv .venv
+   source .venv/bin/activate
+```
+
+   Windows (PowerShell):
+```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+```
+
 2. Install dependencies with `python -m pip install -r requirements.txt`.
-3. Start the monitor with `python monitor.py`.
-4. Start the authentication service with `python service.py`.
-5. Use an HTTP client to test `/login` and `/validate`.
-6. Observe the randomized service crash and monitor alert.
-7. Run `python attacker.py` to test forged heartbeats.
-8. Stop the attacker and verify that the monitor detects the missing heartbeats again.
+3. Terminal 1, start the monitor (it prints `WAITING`): `python monitor.py`
+4. Terminal 2, start the authentication service (the monitor changes to `HEALTHY`): `python service.py`.
+5. In Terminal 3, test `/login` and `/validate` while the service is running. The service crashes after 20-40 seconds, and tickets expire after 60 seconds. Replace `PASTE_TICKET_HERE` with the `ticket` value returned by `/login`.
+
+   macOS/Linux:
+```bash
+   curl -s -X POST http://127.0.0.1:8080/login -H "Content-Type: application/json" -d '{"username":"demo","password":"password123"}'
+   curl -s -X POST http://127.0.0.1:8080/validate -H "Content-Type: application/json" -d '{"ticket":"PASTE_TICKET_HERE"}'
+```
+
+   Windows:
+```powershell
+   $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/login -ContentType "application/json" -Body '{"username":"demo","password":"password123"}'
+   $r
+   Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8080/validate -ContentType "application/json" -Body (@{ticket=$r.ticket} | ConvertTo-Json)
+```
+
+6. Wait for the random crash. Terminal 2 prints `[FAULT] Simulated service crash`, and within about 3.5 seconds the monitor prints a timestamped `FAILED` alert and keeps running.
+7. In Terminal 3, run `python attacker.py` to test forged heartbeats. The monitor returns to `HEALTHY` even though the service is still stopped.
+8. Stop the attacker with Ctrl+C. About 3.5 seconds later the monitor reports `FAILED` again.
+9. Stop the monitor with Ctrl+C. Recorded transitions are in `incidents.log`.
 
 ## Testing
 
