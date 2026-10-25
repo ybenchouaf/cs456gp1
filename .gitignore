@@ -219,3 +219,14 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 incidents.log
+
+# Local environment overrides
+.env.*
+!.env.example
+
+# Operating system files
+.DS_Store
+
+# Editor temporary files
+*.swp
+*.swo
