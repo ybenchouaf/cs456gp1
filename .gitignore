@@ -230,3 +230,6 @@ incidents.log
 # Editor temporary files
 *.swp
 *.swo
+
+# Part 2 generated runtime state
+/runtime/part2/

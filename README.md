@@ -188,7 +188,7 @@ Integration testing must verify:
 
 This is an educational prototype, not a production authentication system.
 
-Out of scope: persistent databases, real user accounts, production credential management, distributed deployment, automatic recovery/failover, and authenticated heartbeat channels.
+Out of scope for Part 1: persistent databases, real user accounts, production credential management, distributed deployment, automatic recovery/failover, and authenticated heartbeat channels.
 
 These limitations are intentional. The project focuses on availability fault detection and adversarial analysis of the monitoring mechanism.
 
