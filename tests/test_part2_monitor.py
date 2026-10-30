@@ -1,6 +1,8 @@
 import json
+import os
 import socket
 import subprocess
+import threading
 from unittest.mock import Mock
 
 import pytest
@@ -21,6 +23,8 @@ def test_recovery_and_cleanup(tmp_path, monkeypatch, suppression, corrupt):
     children = []
 
     def popen(command, **kwargs):
+        if command[2:4] != ["-m", "part2.service"]:
+            return original_popen(command, **kwargs)
         # Change crash timing only in test children, without changing service code.
         bootstrap = (
             "import runpy; from part2 import config; "
@@ -66,6 +70,24 @@ def test_recovery_and_cleanup(tmp_path, monkeypatch, suppression, corrupt):
         assert events.index("[Failover Triggered]") < events.index("[Service Restored]")
     assert ("[Heartbeat Disruption]" in events) == (suppression is not None)
     assert all(child.poll() is not None for child in children)
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        for child in children:
+            if child.service_pid is not None:
+                handle = kernel.OpenProcess(0x00100000, False, child.service_pid)
+                if handle:
+                    try:
+                        assert kernel.WaitForSingleObject(handle, 2000) == 0
+                    finally:
+                        kernel.CloseHandle(handle)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((config.HOST, port))
 
 
 @pytest.mark.parametrize("health", [
@@ -78,9 +100,41 @@ def test_readiness_rejects_wrong_identity(monkeypatch, health):
     response = BytesIO(json.dumps(health).encode())
     response.status = 200
     monkeypatch.setattr(monitor, "urlopen", lambda *args, **kwargs: response)
-    process = Mock(pid=123)
+    process = Mock(pid=100, service_pid=123)
     process.poll.return_value = None
     assert not monitor.ready(process, "secondary", 8080)
+
+
+@pytest.mark.parametrize("node_id", ["primary", "secondary"])
+def test_readiness_uses_reported_service_pid(monkeypatch, node_id):
+    from io import BytesIO, StringIO
+    process = Mock(pid=100, service_pid=None)
+    process.poll.return_value = None
+    process.stdout = StringIO(
+        f"[2026-10-30T12:00:00-06:00] [READY] {node_id} pid=123 at http://127.0.0.1:8080\n"
+    )
+    monitor.relay_output(process, threading.Event(), node_id)
+    assert process.service_pid == 123
+    assert process.pid == 100
+    response = BytesIO(json.dumps({"status": "ready", "node_id": node_id, "pid": 123}).encode())
+    response.status = 200
+    monkeypatch.setattr(monitor, "urlopen", lambda *args, **kwargs: response)
+    assert monitor.ready(process, node_id, 8080)
+    process.poll.return_value = 1
+    assert not monitor.ready(process, node_id, 8080)
+
+
+def test_readiness_requires_expected_child_output(monkeypatch):
+    from io import StringIO
+    process = Mock(pid=100, service_pid=None)
+    process.poll.return_value = None
+    process.stdout = StringIO("[READY] other pid=123 at http://127.0.0.1:8080\n")
+    monitor.relay_output(process, threading.Event(), "secondary")
+    assert process.service_pid is None
+    request = Mock()
+    monkeypatch.setattr(monitor, "urlopen", request)
+    assert not monitor.ready(process, "secondary", 8080)
+    request.assert_not_called()
 
 
 def test_promotion_pipe_failure():

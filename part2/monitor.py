@@ -1,6 +1,8 @@
 import argparse
 import json
+import os
 import queue
+import re
 import signal
 import socket
 import subprocess
@@ -26,7 +28,7 @@ def log(message):
 
 
 def ready(process, node_id, port):
-    if process.poll() is not None:
+    if process.poll() is not None or process.service_pid is None:
         return False
     try:
         with urlopen(f"http://{config.HOST}:{port}/health", timeout=0.25) as response:
@@ -37,18 +39,21 @@ def ready(process, node_id, port):
             isinstance(health, dict)
             and health.get("status") == "ready"
             and health.get("node_id") == node_id
-            and health.get("pid") == process.pid
+            and health.get("pid") == process.service_pid
             and process.poll() is None
         )
     except (OSError, URLError, ValueError):
         return False
 
 
-def relay_output(process, waiting):
+def relay_output(process, waiting, node_id):
     for line in process.stdout:
         print(line, end="", flush=True)
         if "[STANDBY] Waiting for PROMOTE on stdin." in line:
             waiting.set()
+        match = re.search(r"\[READY\] (\S+) pid=([1-9][0-9]*) at http://", line)
+        if match and match.group(1) == node_id and process.service_pid is None:
+            process.service_pid = int(match.group(2))
 
 
 def launch(args, mode, children, waiting):
@@ -65,8 +70,10 @@ def launch(args, mode, children, waiting):
         command, cwd=config.REPO_ROOT, stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
+    process.service_pid = None
     children.append(process)
-    threading.Thread(target=relay_output, args=(process, waiting), daemon=True).start()
+    node_id = "primary" if mode == "primary" else "secondary"
+    threading.Thread(target=relay_output, args=(process, waiting, node_id), daemon=True).start()
     return process
 
 
@@ -144,7 +151,7 @@ def supervise(args, children):
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Recovery timed out: expected secondary /health identity was not ready")
                 time.sleep(config.MONITOR_POLL_INTERVAL)
-            log(f"[Service Restored] secondary pid={secondary.pid} ready")
+            log(f"[Service Restored] secondary pid={secondary.service_pid} ready")
             # A single standby is available; do not attempt a second promotion.
             while secondary.poll() is None:
                 time.sleep(config.MONITOR_POLL_INTERVAL)
@@ -154,7 +161,14 @@ def supervise(args, children):
 def cleanup(children):
     for child in children:
         if child.poll() is None:
-            child.terminate()
+            if os.name == "nt":
+                # Windows venv python.exe can be a launcher with a service child.
+                subprocess.run(
+                    ["taskkill", "/PID", str(child.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+                )
+            if child.poll() is None:
+                child.terminate()
     for child in children:
         try:
             child.wait(timeout=2)

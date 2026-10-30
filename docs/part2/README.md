@@ -155,7 +155,10 @@ the primary. Startup and standby confirmation are bounded by the shared
 10-second startup timeout. Promotion writes and secondary readiness each have
 a 10-second bound. Early child exits, pipe errors, port conflicts, and readiness
 timeouts produce `[ERROR]` and shut down the managed processes. A restoration
-message requires HTTP 200 and matching ready status, node ID, and secondary PID.
+message requires HTTP 200 and matching ready status, node ID, and the actual
+service PID captured from that child's `[READY]` output. Windows virtual
+environments may use a different launcher PID; the controller retains the
+process handle for exit detection and stops the managed process tree on Windows.
 
 Missing heartbeats alone never authorize promotion. The controller keeps polling
 the managed primary's process handle every 0.25 seconds. This local process-exit
