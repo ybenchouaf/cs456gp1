@@ -4,7 +4,7 @@
 
 The architecture, shared configuration, and interfaces are defined in Issue #19.
 
-The service, checkpoint module, controller, and audit script will be implemented through their assigned issues. Commands marked as planned become runnable when those components are merged.
+Checkpoint storage is implemented in Issue #20. The service, controller, and audit script remain planned through their assigned issues. Commands marked as planned become runnable when those components are merged.
 
 ## Overview
 
@@ -103,6 +103,88 @@ Expected behavior:
 - The client address remains unchanged.
 - The health response identifies the secondary.
 - Recovery does not extend the ticket's original expiration.
+
+## Checkpoint Storage
+
+`part2/checkpoint.py` provides:
+
+- `save_checkpoint(path, tickets)` to save a versioned JSON snapshot.
+- `load_checkpoint(path)` to restore unexpired tickets without extending their expiration.
+- `CheckpointError` for invalid checkpoints and filesystem failures.
+
+Saving creates the parent directory if needed, writes and closes a temporary file in that directory, and atomically replaces the destination.
+
+Loading validates the format version, required fields, ticket values, and finite numeric timestamps. Missing or invalid checkpoints raise an explicit error. A valid checkpoint containing no unexpired tickets returns an empty dictionary.
+
+The service must serialize state mutations and checkpoint writes using the shared lock described in the design. This integration is implemented in Issue #21.
+
+Structural validation does not authenticate valid-looking malicious checkpoint replacements.
+
+### Checkpoint Verification
+
+Run this PowerShell block from the repository root with the virtual environment active. It uses a temporary directory and cleans up afterward.
+
+```powershell
+@'
+import json
+import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+from part2.checkpoint import CheckpointError, load_checkpoint, save_checkpoint
+
+
+def expect_error(action):
+    try:
+        action()
+    except CheckpointError:
+        return
+    raise AssertionError("Expected CheckpointError")
+
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "checkpoint.json"
+    deadline = time.time() + 60
+
+    save_checkpoint(path, {"live": deadline, "expired": time.time() - 1})
+    assert load_checkpoint(path) == {"live": deadline}
+
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["version"] == 1
+    assert document["tickets"]["live"] == deadline
+
+    document["version"] = 2
+    path.write_text(json.dumps(document), encoding="utf-8")
+    expect_error(lambda: load_checkpoint(path))
+
+    save_checkpoint(path, {"live": deadline})
+    previous = path.read_bytes()
+
+    with patch("part2.checkpoint.os.replace", side_effect=OSError("simulated")):
+        expect_error(lambda: save_checkpoint(path, {"new": deadline}))
+
+    assert path.read_bytes() == previous
+    assert not list(path.parent.glob("*.tmp"))
+
+    expect_error(lambda: save_checkpoint(path, {"bad": float("nan")}))
+    assert path.read_bytes() == previous
+
+    path.write_text("{broken", encoding="utf-8")
+    expect_error(lambda: load_checkpoint(path))
+    expect_error(lambda: load_checkpoint(path.parent / "missing.json"))
+
+print("Checkpoint checks passed.")
+'@ | python -
+```
+
+Expected output:
+
+```text
+Checkpoint checks passed.
+```
+
+Jane's shared pytest coverage for Part 2 is tracked in Issue #23.
 
 ## Testing
 
