@@ -4,7 +4,7 @@
 
 The architecture, shared configuration, and interfaces are defined in Issue #19.
 
-Checkpoint storage and the primary/standby service are implemented in Issues #20 and #21. The controller and adversarial audit script remain planned through their assigned issues. Commands marked as planned become runnable when those components are merged.
+Checkpoint storage, the primary/standby service, and the failover controller are implemented in Issues #20–#22. The adversarial audit script remains planned through its assigned issue.
 
 ## Overview
 
@@ -85,7 +85,7 @@ Use the client requests below to obtain and validate a ticket while the primary 
 
 After the primary crashes, type `PROMOTE` and press Enter in the standby terminal. Then validate the same ticket again before its original expiration.
 
-This manual promotion exercises the service interface during component testing. The controller in Issue #22 will perform promotion automatically.
+This manual promotion exercises the service interface during component testing. Use the controller below for automatic promotion.
 
 ### Service Behavior
 
@@ -117,17 +117,59 @@ After five seconds, heartbeat transmission stops while HTTP processing continues
 
 Stop a running service with Ctrl+C.
 
-## Planned Cluster Execution
+## Cluster Execution
 
-The following command will become available after Issues #21 and #22 are implemented:
+One command starts the controller, primary, and waiting standby:
 
 ```bash
 python -m part2.monitor
 ```
 
-The controller will launch both the primary and waiting standby. During normal cluster execution, users will not separately launch those processes.
+Do not separately launch service processes during controller execution.
 
-Stop the controller with Ctrl+C. It will clean up its managed processes.
+Stop the controller with Ctrl+C. It terminates and waits for both managed processes, escalating to a kill if necessary. Use Ctrl+C on Windows; forcibly terminating the controller with Task Manager cannot run Python cleanup.
+
+### Controller Verification
+
+1. Run `python -m part2.monitor`. Wait for `[Started]` and request `/health`
+   from another terminal: `Invoke-RestMethod http://127.0.0.1:8080/health`.
+   It should identify `primary` and the PID printed by the controller.
+2. Issue a ticket using the client commands below. After the primary's random
+   crash (20–40 seconds), expect timestamped `[Crash Detected]`,
+   `[Failover Triggered]`, and `[Service Restored]` in that order, once each.
+   Repeat `/health`: it must identify `secondary` with the expected PID.
+   Validate the ticket before its original 60-second expiration.
+3. Read the recovery log with `Get-Content runtime/part2/incidents.log`.
+   Stop the controller with Ctrl+C. Requests to `/health` should now fail,
+   and neither PID printed by the controller should remain running.
+4. Start a fresh run with
+   `python -m part2.monitor --suppress-heartbeats-after 5`.
+   After the 3.5-second timeout, expect `[Heartbeat Disruption]` with no promotion
+   while `/health` still identifies the primary. Leave the controller running:
+   even without another heartbeat, the primary's eventual crash must trigger
+   promotion and verified secondary readiness.
+
+The controller supports `--service-port`, `--heartbeat-port`, and `--checkpoint`
+and forwards them to both children. It forwards heartbeat suppression only to
+the primary. Startup and standby confirmation are bounded by the shared
+10-second startup timeout. Promotion writes and secondary readiness each have
+a 10-second bound. Early child exits, pipe errors, port conflicts, and readiness
+timeouts produce `[ERROR]` and shut down the managed processes. A restoration
+message requires HTTP 200 and matching ready status, node ID, and the actual
+service PID captured from that child's `[READY]` output. Windows virtual
+environments may use a different launcher PID; the controller retains the
+process handle for exit detection and stops the managed process tree on Windows.
+
+Missing heartbeats alone never authorize promotion. The controller keeps polling
+the managed primary's process handle every 0.25 seconds. This local process-exit
+policy avoids split-brain during heartbeat disruption but does not recover an
+alive but hung primary. Only one failover is supported; a later secondary exit
+is an explicit error, not another promotion.
+
+Run the controller tests with `python -m pytest tests/test_part2_monitor.py -q`.
+They use real child processes on temporary ports with accelerated crash timing,
+retain the 3.5-second heartbeat timeout, and verify normal recovery, heartbeat
+suppression, identity checks, one promotion, and cleanup.
 
 Part 1 and Part 2 use the same default ports. Stop existing service, monitor, and attacker processes before starting another demonstration or running integration tests.
 
@@ -155,7 +197,7 @@ Invoke-RestMethod `
 Invoke-RestMethod -Uri http://127.0.0.1:8080/health
 ```
 
-After the primary crashes and the standby is promoted, repeat the validation and health requests. Automatic promotion will be provided by the controller in Issue #22.
+After the primary crashes and the standby is promoted, repeat the validation and health requests.
 
 Expected behavior:
 
@@ -254,7 +296,7 @@ Stop demonstration processes before running tests:
 python -m pytest
 ```
 
-Existing Part 1 tests remain available. Part 2 tests will be added through Issue #23.
+Existing Part 1 tests remain available. Controller tests are in `tests/test_part2_monitor.py`; broader Part 2 coverage is tracked in Issue #23.
 
 ## Planned Adversarial Audits
 
