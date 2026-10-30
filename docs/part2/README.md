@@ -4,7 +4,7 @@
 
 The architecture, shared configuration, and interfaces are defined in Issue #19.
 
-Checkpoint storage is implemented in Issue #20. The service, controller, and audit script remain planned through their assigned issues. Commands marked as planned become runnable when those components are merged.
+Checkpoint storage and the primary/standby service are implemented in Issues #20 and #21. The controller and adversarial audit script remain planned through their assigned issues. Commands marked as planned become runnable when those components are merged.
 
 ## Overview
 
@@ -57,6 +57,66 @@ python -m pip install -r requirements.txt
 
 Activate the environment in each terminal used for the project.
 
+## Service Processes
+
+The primary and warm standby service modes are available through `part2/service.py`.
+
+For a standalone service check, use three terminals from the repository root with the virtual environment active.
+
+### Terminal 1: Waiting Standby
+
+```bash
+python -m part2.service --mode standby --node-id secondary
+```
+
+The standby waits for a promotion command on stdin. While waiting, it does not bind the HTTP port, send heartbeats, or write checkpoints.
+
+### Terminal 2: Primary
+
+```bash
+python -m part2.service --mode primary --node-id primary
+```
+
+The primary initializes its checkpoint, serves requests, sends heartbeats, and crashes randomly after 20–40 seconds.
+
+### Terminal 3: Client
+
+Use the client requests below to obtain and validate a ticket while the primary is running.
+
+After the primary crashes, type `PROMOTE` and press Enter in the standby terminal. Then validate the same ticket again before its original expiration.
+
+This manual promotion exercises the service interface during component testing. The controller in Issue #22 will perform promotion automatically.
+
+### Service Behavior
+
+- Successful login persists the new ticket before returning HTTP 200.
+- Failed persistence rolls back the new ticket and returns HTTP 503.
+- Invalid credentials return HTTP 401.
+- Login and validation require a JSON object; other body types return HTTP 400.
+- `GET /health` identifies the ready node and its PID.
+- Restored tickets retain their original expiration deadlines.
+- The promoted secondary continues checkpointing and sending heartbeats without random crash injection.
+- Unrecognized standby input is ignored. Closing stdin exits without promotion.
+- Missing or invalid checkpoints prevent promotion from reaching a ready state.
+
+### Configuration Overrides
+
+Both modes support:
+
+- `--service-port PORT`
+- `--heartbeat-port PORT`
+- `--checkpoint PATH`
+
+Primary mode additionally supports:
+
+```bash
+python -m part2.service --mode primary --node-id primary --suppress-heartbeats-after 5
+```
+
+After five seconds, heartbeat transmission stops while HTTP processing continues. The primary's random crash remains enabled.
+
+Stop a running service with Ctrl+C.
+
 ## Planned Cluster Execution
 
 The following command will become available after Issues #21 and #22 are implemented:
@@ -71,7 +131,7 @@ Stop the controller with Ctrl+C. It will clean up its managed processes.
 
 Part 1 and Part 2 use the same default ports. Stop existing service, monitor, and attacker processes before starting another demonstration or running integration tests.
 
-## Planned Client Demonstration
+## Client Requests
 
 Use another terminal while the cluster is running.
 
@@ -95,7 +155,7 @@ Invoke-RestMethod `
 Invoke-RestMethod -Uri http://127.0.0.1:8080/health
 ```
 
-After the primary's random crash and automatic recovery, repeat the validation and health requests.
+After the primary crashes and the standby is promoted, repeat the validation and health requests. Automatic promotion will be provided by the controller in Issue #22.
 
 Expected behavior:
 
