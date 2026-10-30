@@ -1,16 +1,26 @@
-# CS 456: Authentication Service Failure Detection
+# CS 456: Resilient Authentication Service
 
 ## Overview
 
-A lightweight authentication and ticket service demonstrating fault detection through an independent heartbeat monitor.
+A lightweight authentication and ticket service demonstrating failure detection and automated recovery.
 
-The service validates simulated credentials, issues session tickets, and experiences random process crashes. A separate monitor detects failures by observing missed heartbeats. An adversarial script tests whether forged heartbeat messages can conceal a service outage.
+Part 1 implements authentication, random process crashes, heartbeat monitoring, and an adversarial heartbeat-spoofing assessment.
 
-**Course:** CS 456, Modern Cybersecurity  
+Part 2 extends the design with passive redundancy, checkpointing, a warm standby, and automatic failover. Its implementation is tracked through the Part 2 issues.
 
-**Assignment:** Mini Group Project 1, Part 1: Failure Detection
+**Course:** CS 456, Modern Cybersecurity
+
+**Assignment:** Mini Group Project 1, Parts 1 and 2
 
 **Team Members:** @ybenchouaf, @janerassadina, @nradaev, @mrob772
+
+## Project Parts
+
+- **Part 1: Failure Detection** — Existing root-level scripts and the instructions below. The completed baseline is preserved in [release v1.0](https://github.com/ybenchouaf/cs456gp1/releases/tag/v1.0).
+- **Part 2: Recovery** — [Overview and execution plan](docs/part2/README.md).
+- **Part 2 Architecture** — [Diagram and shared interfaces](docs/part2/design.md).
+
+The remaining sections on this page document Part 1.
 
 ## Architecture
 
@@ -188,7 +198,7 @@ Integration testing must verify:
 
 This is an educational prototype, not a production authentication system.
 
-Out of scope: persistent databases, real user accounts, production credential management, distributed deployment, automatic recovery/failover, and authenticated heartbeat channels.
+Out of scope for Part 1: persistent databases, real user accounts, production credential management, distributed deployment, automatic recovery/failover, and authenticated heartbeat channels.
 
 These limitations are intentional. The project focuses on availability fault detection and adversarial analysis of the monitoring mechanism.
 
