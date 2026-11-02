@@ -296,7 +296,22 @@ Stop demonstration processes before running tests:
 python -m pytest
 ```
 
-Existing Part 1 tests remain available. Controller tests are in `tests/test_part2_monitor.py`; broader Part 2 coverage is tracked in Issue #23.
+Existing Part 1 tests remain available. Controller tests are in `tests/test_part2_monitor.py`; 
+Part 2 tests are in `tests/test_part2_checkpoint.py` (checkpoint storage), `tests/test_part2_service.py` (login, validation, standby promotion), `tests/test_part2_monitor.py` (controller), and `tests/test_part2_recovery.py` (end-to-end failover).
+
+The Part 2 recovery test (`tests/test_part2_recovery.py`) shortens the primary's crash delay to 5 seconds and the ticket lifetime to 20 seconds and prints three timings:
+
+- **Detection delay:** `[Crash Detected]` time minus the first failed `/health` request.
+- **Promotion-to-readiness:** `[Service Restored]` time minus `[Failover Triggered]` time.
+- **Overall recovery:** `[Service Restored]` time minus the first failed `/health` request.
+
+Observed timings (`python -m pytest tests/test_part2_recovery.py -v`):
+
+| Run | Detection delay | Promotion-to-readiness | Overall recovery |
+|---|---------|---------|---------|
+| 1 | 2.479 s | 0.262 s | 2.741 s |
+| 2 | 2.484 s | 0.258 s | 2.742 s |
+| 3 | 2.493 s | 0.263 s | 2.756 s |
 
 ## Planned Adversarial Audits
 
