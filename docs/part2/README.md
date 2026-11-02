@@ -4,7 +4,7 @@
 
 The architecture, shared configuration, and interfaces are defined in Issue #19.
 
-Checkpoint storage, the primary/standby service, and the failover controller are implemented in Issues #20–#22. The adversarial audit script remains planned through its assigned issue.
+Checkpoint storage, the primary/standby service, and the failover controller are implemented in Issues #20–#22. The adversarial audit script is implemented in Issue #24.
 
 ## Overview
 
@@ -313,22 +313,21 @@ Observed timings (`python -m pytest tests/test_part2_recovery.py -v`):
 | 2 | 2.484 s | 0.258 s | 2.742 s |
 | 3 | 2.493 s | 0.263 s | 2.756 s |
 
-## Planned Adversarial Audits
-
-These commands will become available after Issue #24 is implemented:
+## Adversarial Audits
+Run these commands from the repository root:
 
 ```bash
 python -m part2.audit --scenario heartbeat-loss
 python -m part2.audit --scenario corrupt-checkpoint
 ```
 
-Each scenario will manage its test processes and temporary data.
+Each scenario manages its test processes and temporary data.
 
 The heartbeat-loss scenario checks whether missing heartbeats cause promotion while the primary remains alive and responsive.
 
 The checkpoint-corruption scenario checks whether invalid recovery state produces an explicit failure without reporting successful restoration.
 
-Record actual results in `audit-results.md`.
+Results are recorded in `docs/part2/audit-results.md`.
 
 ## Runtime Files
 
